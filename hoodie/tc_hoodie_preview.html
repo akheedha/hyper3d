@@ -2,84 +2,203 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>TC Hoodie Preview</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TC Hoodie 3D SDF Preview</title>
   <style>
+    * { box-sizing: border-box; }
     html, body {
       margin: 0;
+      padding: 0;
       width: 100%;
       height: 100%;
       overflow: hidden;
-      background: #dcdcdc;
-      font-family: Consolas, monospace;
-    }
-    #status {
-      position: fixed;
-      left: 8px;
-      top: 8px;
-      z-index: 2;
-      max-width: calc(100% - 16px);
-      background: rgba(255, 255, 255, 0.92);
-      color: #111;
-      padding: 8px 10px;
-      white-space: pre-wrap;
-      font-size: 12px;
-      line-height: 1.35;
+      background: #e8e8e8;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      user-select: none;
     }
     canvas {
       display: block;
       width: 100vw;
       height: 100vh;
+      cursor: grab;
+    }
+    canvas:active { cursor: grabbing; }
+    #controls {
+      position: fixed;
+      top: 16px;
+      right: 16px;
+      z-index: 10;
+      background: rgba(255, 255, 255, 0.88);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(0, 0, 0, 0.08);
+      border-radius: 12px;
+      padding: 16px;
+      width: 280px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
+      font-size: 13px;
+      color: #222;
+      transition: opacity 0.2s;
+    }
+    .control-row {
+      margin-bottom: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .control-row.horizontal {
+      flex-direction: row;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .control-row:last-child { margin-bottom: 0; }
+    label {
+      font-weight: 600;
+      font-size: 12px;
+      color: #444;
+      display: flex;
+      justify-content: space-between;
+    }
+    span.val { font-weight: normal; color: #666; }
+    input[type="range"] {
+      width: 100%;
+      accent-color: #2563eb;
+      cursor: pointer;
+    }
+    input[type="checkbox"] {
+      cursor: pointer;
+      width: 16px;
+      height: 16px;
+      accent-color: #2563eb;
+    }
+    select {
+      padding: 6px 8px;
+      border-radius: 6px;
+      border: 1px solid #ccc;
+      background: #fff;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    #fps-badge {
+      position: fixed;
+      bottom: 16px;
+      left: 16px;
+      z-index: 10;
+      background: rgba(0, 0, 0, 0.75);
+      color: #fff;
+      padding: 6px 12px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-family: monospace;
+      letter-spacing: 0.5px;
     }
   </style>
 </head>
 <body>
-  <div id="status">initializing...</div>
+  <div id="controls">
+    <div style="font-weight:700;font-size:14px;margin-bottom:12px;color:#111;">Hoodie 3D Controls</div>
+    
+    <div class="control-row horizontal">
+      <label for="autoRotate">Auto Rotate</label>
+      <input type="checkbox" id="autoRotate" checked />
+    </div>
+
+    <div class="control-row">
+      <label for="rotationSpeed">Rotation Speed <span class="val" id="speedVal">15°/s</span></label>
+      <input type="range" id="rotationSpeed" min="0" max="60" value="15" step="1" />
+    </div>
+
+    <div class="control-row">
+      <label for="viewAngle">Manual Angle <span class="val" id="angleVal">0°</span></label>
+      <input type="range" id="viewAngle" min="0" max="360" value="0" step="1" />
+    </div>
+
+    <div class="control-row">
+      <label for="zoom">Zoom <span class="val" id="zoomVal">1.0x</span></label>
+      <input type="range" id="zoom" min="0.6" max="1.8" value="1.0" step="0.05" />
+    </div>
+
+    <div class="control-row">
+      <label for="debugMode">Display Mode</label>
+      <select id="debugMode">
+        <option value="0">Standard 3D Garment</option>
+        <option value="1">Raw 2D SDF Atlas</option>
+        <option value="2">2D Distance Slice</option>
+      </select>
+    </div>
+
+    <div class="control-row" id="sliceRow" style="display:none;">
+      <label for="sliceZ">Slice Z <span class="val" id="sliceVal">64</span></label>
+      <input type="range" id="sliceZ" min="0" max="127" value="64" step="1" />
+    </div>
+  </div>
+
+  <div id="fps-badge">FPS: -- | Loading texture...</div>
+
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script>
-    const statusEl = document.getElementById("status");
-    const errors = [];
+    const fpsBadge = document.getElementById("fps-badge");
     const query = new URLSearchParams(location.search);
-    const framesToMeasure = Number(query.get("frames") || "120");
-    const compileMessages = [];
 
-    const note = (label, value) => {
-      const line = value === undefined ? String(label) : label + ": " + value;
-      compileMessages.push(line);
-      statusEl.textContent = compileMessages.join("\n");
-    };
+    const autoRotateEl = document.getElementById("autoRotate");
+    const speedEl = document.getElementById("rotationSpeed");
+    const speedVal = document.getElementById("speedVal");
+    const angleEl = document.getElementById("viewAngle");
+    const angleVal = document.getElementById("angleVal");
+    const zoomEl = document.getElementById("zoom");
+    const zoomVal = document.getElementById("zoomVal");
+    const debugModeEl = document.getElementById("debugMode");
+    const sliceRow = document.getElementById("sliceRow");
+    const sliceZEl = document.getElementById("sliceZ");
+    const sliceVal = document.getElementById("sliceVal");
 
-    const originalError = console.error.bind(console);
-    console.error = (...args) => {
-      errors.push(args.map((item) => String(item)).join(" "));
-      originalError(...args);
-      note("console.error", errors[errors.length - 1]);
-    };
-    window.addEventListener("error", (event) => {
-      errors.push(String(event.message || event.error || "window error"));
-      note("window.error", errors[errors.length - 1]);
-    });
+    // Init values from query params or defaults
+    if (query.has("autoRotate")) autoRotateEl.checked = query.get("autoRotate") === "1";
+    if (query.has("viewAngle")) angleEl.value = query.get("viewAngle");
+    if (query.has("rotationSpeed")) speedEl.value = query.get("rotationSpeed");
+    if (query.has("zoom")) zoomEl.value = query.get("zoom");
+    if (query.has("debugMode")) debugModeEl.value = query.get("debugMode");
 
     const uniforms = {
       iResolution: { value: new THREE.Vector3(window.innerWidth, window.innerHeight, 1) },
       iTime: { value: 0 },
-      viewAngle: { value: Number(query.get("viewAngle") || "0") },
-      autoRotate: { value: Number(query.get("autoRotate") || "0") },
-      rotationSpeed: { value: Number(query.get("rotationSpeed") || "12") },
-      zoom: { value: Number(query.get("zoom") || "1") },
-      debugMode: { value: Number(query.get("debugMode") || "0") },
-      sliceZ: { value: Number(query.get("sliceZ") || "64") },
+      viewAngle: { value: Number(angleEl.value) },
+      autoRotate: { value: autoRotateEl.checked ? 1.0 : 0.0 },
+      rotationSpeed: { value: Number(speedEl.value) },
+      zoom: { value: Number(zoomEl.value) },
+      debugMode: { value: Number(debugModeEl.value) },
+      sliceZ: { value: Number(sliceZEl.value) },
       iChannel0: { value: null }
     };
 
-    const renderer = new THREE.WebGLRenderer({
-      antialias: true,
-      preserveDrawingBuffer: true
+    autoRotateEl.addEventListener("change", () => {
+      uniforms.autoRotate.value = autoRotateEl.checked ? 1.0 : 0.0;
     });
-    renderer.setPixelRatio(1);
+    speedEl.addEventListener("input", () => {
+      uniforms.rotationSpeed.value = Number(speedEl.value);
+      speedVal.textContent = speedEl.value + "°/s";
+    });
+    angleEl.addEventListener("input", () => {
+      uniforms.viewAngle.value = Number(angleEl.value);
+      angleVal.textContent = angleEl.value + "°";
+    });
+    zoomEl.addEventListener("input", () => {
+      uniforms.zoom.value = Number(zoomEl.value);
+      zoomVal.textContent = Number(zoomEl.value).toFixed(2) + "x";
+    });
+    debugModeEl.addEventListener("change", () => {
+      uniforms.debugMode.value = Number(debugModeEl.value);
+      sliceRow.style.display = uniforms.debugMode.value === 2 ? "flex" : "none";
+    });
+    sliceZEl.addEventListener("input", () => {
+      uniforms.sliceZ.value = Number(sliceZEl.value);
+      sliceVal.textContent = sliceZEl.value;
+    });
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
     renderer.setSize(window.innerWidth, window.innerHeight, false);
     document.body.appendChild(renderer.domElement);
 
-    const gl = renderer.getContext();
     const scene = new THREE.Scene();
     const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
     const quad = new THREE.Mesh(
@@ -92,37 +211,38 @@
     );
     scene.add(quad);
 
-    const texturePath = "file:///D:/HYPER3D/hyper3D/hoodie/hoodie_sdf_128_atlas.png";
+    const texturePath = "hoodie_sdf_128_atlas.png";
     const textureLoader = new THREE.TextureLoader();
 
     let textureLoaded = false;
     let start = performance.now();
-    let measuredFrames = 0;
-    let totalFrameMs = 0;
-    let previousFrame = 0;
+    let frameCount = 0;
+    let lastFpsUpdate = performance.now();
 
-    const emitStatus = () => {
-      const avgFrameMs = measuredFrames > 0 ? totalFrameMs / measuredFrames : null;
-      const payload = {
-        textureLoaded,
-        measuredFrames,
-        avgFrameMs,
-        approxFps: avgFrameMs ? 1000 / avgFrameMs : null,
-        webglContext: gl instanceof WebGL2RenderingContext ? "WebGL2" : "WebGL1",
-        glVersion: gl.getParameter(gl.VERSION),
-        glRenderer: gl.getParameter(gl.RENDERER),
-        glVendor: gl.getParameter(gl.VENDOR),
-        shadingLanguageVersion: gl.getParameter(gl.SHADING_LANGUAGE_VERSION),
-        errors
-      };
-      statusEl.textContent = JSON.stringify(payload, null, 2);
-    };
-
-    const onResize = () => {
+    window.addEventListener("resize", () => {
       renderer.setSize(window.innerWidth, window.innerHeight, false);
       uniforms.iResolution.value.set(window.innerWidth, window.innerHeight, 1);
-    };
-    window.addEventListener("resize", onResize);
+    });
+
+    // Mouse drag interaction to freely rotate
+    let isDragging = false;
+    let prevMouseX = 0;
+    window.addEventListener("mousedown", (e) => {
+      if (e.target.closest("#controls")) return;
+      isDragging = true;
+      prevMouseX = e.clientX;
+    });
+    window.addEventListener("mousemove", (e) => {
+      if (!isDragging) return;
+      const deltaX = e.clientX - prevMouseX;
+      prevMouseX = e.clientX;
+      let curAngle = (uniforms.viewAngle.value - deltaX * 0.6) % 360;
+      if (curAngle < 0) curAngle += 360;
+      uniforms.viewAngle.value = curAngle;
+      angleEl.value = Math.round(curAngle);
+      angleVal.textContent = Math.round(curAngle) + "°";
+    });
+    window.addEventListener("mouseup", () => { isDragging = false; });
 
     textureLoader.load(
       texturePath,
@@ -135,32 +255,29 @@
         texture.needsUpdate = true;
         uniforms.iChannel0.value = texture;
         textureLoaded = true;
-        note("texture", "loaded");
+        fpsBadge.textContent = "FPS: -- | Ready";
         requestAnimationFrame(render);
       },
       undefined,
       (err) => {
-        errors.push("Texture load failed: " + (err && err.message ? err.message : err));
-        emitStatus();
+        fpsBadge.textContent = "Texture load error: " + (err && err.message ? err.message : err);
       }
     );
 
     function render(now) {
-      if (!textureLoaded) {
-        emitStatus();
-        return;
-      }
+      if (!textureLoaded) return;
       uniforms.iTime.value = (now - start) / 1000;
-      if (measuredFrames > 0) {
-        totalFrameMs += now - previousFrame;
-      }
-      previousFrame = now;
-      measuredFrames += 1;
       renderer.render(scene, camera);
-      if (measuredFrames >= framesToMeasure) {
-        emitStatus();
-        return;
+
+      frameCount++;
+      if (now - lastFpsUpdate >= 500) {
+        const fps = Math.round((frameCount * 1000) / (now - lastFpsUpdate));
+        fpsBadge.textContent = `FPS: ${fps} | 3D Raymarching`;
+        frameCount = 0;
+        lastFpsUpdate = now;
       }
+
+      // Keep rotating indefinitely
       requestAnimationFrame(render);
     }
   </script>
