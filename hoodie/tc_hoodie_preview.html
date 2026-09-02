@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>TC Hoodie Preview</title>
+  <style>
+    html, body {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #dcdcdc;
+      font-family: Consolas, monospace;
+    }
+    #status {
+      position: fixed;
+      left: 8px;
+      top: 8px;
+      z-index: 2;
+      max-width: calc(100% - 16px);
+      background: rgba(255, 255, 255, 0.92);
+      color: #111;
+      padding: 8px 10px;
+      white-space: pre-wrap;
+      font-size: 12px;
+      line-height: 1.35;
+    }
+    canvas {
+      display: block;
+      width: 100vw;
+      height: 100vh;
+    }
+  </style>
+</head>
+<body>
+  <div id="status">initializing...</div>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script>
+    const statusEl = document.getElementById("status");
+    const errors = [];
+    const query = new URLSearchParams(location.search);
+    const framesToMeasure = Number(query.get("frames") || "120");
+    const compileMessages = [];
+
+    const note = (label, value) => {
+      const line = value === undefined ? String(label) : label + ": " + value;
+      compileMessages.push(line);
+      statusEl.textContent = compileMessages.join("\n");
+    };
+
+    const originalError = console.error.bind(console);
+    console.error = (...args) => {
+      errors.push(args.map((item) => String(item)).join(" "));
+      originalError(...args);
+      note("console.error", errors[errors.length - 1]);
+    };
+    window.addEventListener("error", (event) => {
+      errors.push(String(event.message || event.error || "window error"));
+      note("window.error", errors[errors.length - 1]);
+    });
+
+    const uniforms = {
+      iResolution: { value: new THREE.Vector3(window.innerWidth, window.innerHeight, 1) },
+      iTime: { value: 0 },
+      viewAngle: { value: Number(query.get("viewAngle") || "0") },
+      autoRotate: { value: Number(query.get("autoRotate") || "0") },
+      rotationSpeed: { value: Number(query.get("rotationSpeed") || "12") },
+      zoom: { value: Number(query.get("zoom") || "1") },
+      debugMode: { value: Number(query.get("debugMode") || "0") },
+      sliceZ: { value: Number(query.get("sliceZ") || "64") },
+      iChannel0: { value: null }
+    };
+
+    const renderer = new THREE.WebGLRenderer({
+      antialias: true,
+      preserveDrawingBuffer: true
+    });
+    renderer.setPixelRatio(1);
+    renderer.setSize(window.innerWidth, window.innerHeight, false);
+    document.body.appendChild(renderer.domElement);
+
+    const gl = renderer.getContext();
+    const scene = new THREE.Scene();
+    const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+    const quad = new THREE.Mesh(
+      new THREE.PlaneGeometry(2, 2),
+      new THREE.ShaderMaterial({
+        uniforms,
+        vertexShader: "void main(){gl_Position=vec4(position,1.0);}",
+        fragmentShader: "\nuniform vec3 iResolution;\nuniform float iTime;\nuniform float viewAngle;\nuniform float autoRotate;\nuniform float rotationSpeed;\nuniform float zoom;\nuniform float debugMode;\nuniform float sliceZ;\nuniform sampler2D iChannel0;\n\n\n\n// TIMED COLORS / Hoodie Category / 128-cubed SDF atlas.\n// The extension supplies uniforms and wraps mainImage. Do not add #version.\n// debugMode: 0=hoodie, 1=atlas + green status strip, 2=distance slice.\n// Red checkerboard: atlas missing/changed or color-converted. Magenta: step cap.\n// White shading is a preview material; original GLB textures are not sampled.\n\nprecision highp float;\nconst vec3 TC_MIN = vec3(-1.02178639, -0.07764339, -1.02293338);\nconst vec3 TC_MAX = vec3(1.02626739, 1.97041039, 1.02512040);\nconst float TC_H = 0.016000420153;\nconst float TC_RANGE = 1.230000;\nconst vec2 ATLAS_SIZE = vec2(2048.0, 1024.0);\nconst int MAX_STEPS = 1000;\nfloat tcFlipY;\n\nvec2 atlasBytes(vec2 pixel, float flipY) {\n    vec2 uv = (pixel + 0.5) / ATLAS_SIZE;\n    uv.y = mix(uv.y, 1.0 - uv.y, flipY);\n    return floor(texture2D(iChannel0, uv).rg * 255.0 + 0.5);\n}\n\nfloat atlasError(float flipY) {\n    // Known bytes from three widely separated pixels of this exact PNG.\n    vec2 a = abs(atlasBytes(vec2(37.0, 61.0), flipY) - vec2(207.0, 255.0));\n    vec2 b = abs(atlasBytes(vec2(1021.0, 387.0), flipY) - vec2(170.0, 230.0));\n    vec2 c = abs(atlasBytes(vec2(1703.0, 911.0), flipY) - vec2(191.0, 155.0));\n    return dot(a + b + c, vec2(1.0));\n}\n\nfloat voxel(vec3 p) {\n    p = clamp(p, vec3(0.0), vec3(127.0));\n    vec2 tile = vec2(mod(p.z, 16.0), floor(p.z / 16.0));\n    vec2 bytes = atlasBytes(tile * 128.0 + p.xy, tcFlipY);\n    return ((bytes.x * 256.0 + bytes.y) / 65535.0 * 2.0 - 1.0) * TC_RANGE;\n}\n\nfloat hoodieSDF(vec3 p) {\n    // Cell-centred samples. Decode each texel BEFORE interpolation.\n    vec3 g = clamp((p - TC_MIN) / TC_H - 0.5, vec3(0.0), vec3(127.0));\n    vec3 a = floor(g);\n    vec3 t = fract(g);\n    float z0 = mix(\n        mix(voxel(a), voxel(a + vec3(1,0,0)), t.x),\n        mix(voxel(a + vec3(0,1,0)), voxel(a + vec3(1,1,0)), t.x), t.y);\n    float z1 = mix(\n        mix(voxel(a + vec3(0,0,1)), voxel(a + vec3(1,0,1)), t.x),\n        mix(voxel(a + vec3(0,1,1)), voxel(a + vec3(1,1,1)), t.x), t.y);\n    return mix(z0, z1, t.z);\n}\n\nbool intersectBox(vec3 ro, vec3 rd, out float nearT, out float farT) {\n    // Stable for exactly front/back/side orthographic rays.\n    vec3 safeDir = mix(vec3(-1.0), vec3(1.0), step(vec3(0.0), rd))\n                 * max(abs(rd), vec3(0.00000001));\n    vec3 ta = (TC_MIN - ro) / safeDir;\n    vec3 tb = (TC_MAX - ro) / safeDir;\n    vec3 lo = min(ta, tb), hi = max(ta, tb);\n    nearT = max(0.0, max(lo.x, max(lo.y, lo.z)));\n    farT = min(hi.x, min(hi.y, hi.z));\n    return farT >= nearT;\n}\n\n// Return 1=hit, 0=miss, -1=iteration cap. Do not silently hide capped rays.\nfloat traceHoodie(vec3 ro, vec3 rd, out float t) {\n    float nearT, farT;\n    t = 0.0;\n    if (!intersectBox(ro, rd, nearT, farT)) return 0.0;\n    t = nearT + 0.000001;\n    float previousT = nearT;\n    for (int i = 0; i < MAX_STEPS; ++i) {\n        if (t > farT) return 0.0;\n        float d = hoodieSDF(ro + rd * t);\n        if (d <= TC_H * 0.004) {\n            if (d < 0.0) {\n                float leftT = previousT, rightT = t;\n                for (int j = 0; j < 10; ++j) {\n                    float midT = 0.5 * (leftT + rightT);\n                    if (hoodieSDF(ro + rd * midT) < 0.0) rightT = midT;\n                    else leftT = midT;\n                }\n                t = 0.5 * (leftT + rightT);\n            }\n            return 1.0;\n        }\n        previousT = t;\n        // Practical conservative step for this sampled field\n        t += max(0.65 * d, TC_H * 0.025);\n    }\n    return t > farT ? 0.0 : -1.0;\n}\n\nvec3 hoodieNormal(vec3 p) {\n    float e = TC_H * 0.35;\n    vec3 n = vec3(\n        hoodieSDF(p + vec3(e,0,0)) - hoodieSDF(p - vec3(e,0,0)),\n        hoodieSDF(p + vec3(0,e,0)) - hoodieSDF(p - vec3(0,e,0)),\n        hoodieSDF(p + vec3(0,0,e)) - hoodieSDF(p - vec3(0,0,e)));\n    return n / max(length(n), 0.00000001);\n}\n\nvoid mainImage(out vec4 fragColor, in vec2 fragCoord) {\n    vec2 screenUV = fragCoord / iResolution.xy;\n    float error0 = atlasError(0.0), error1 = atlasError(1.0);\n    tcFlipY = error1 < error0 ? 1.0 : 0.0;\n    if (min(error0, error1) > 1.0) {\n        float check = mod(floor(fragCoord.x / 24.0) + floor(fragCoord.y / 24.0), 2.0);\n        fragColor = vec4(mix(vec3(0.25,0.01,0.02), vec3(0.9,0.08,0.05), check), 1.0);\n        return;\n    }\n    if (debugMode > 0.5 && debugMode < 1.5) {\n        vec2 pixel = floor(clamp(vec2(screenUV.x, 1.0-screenUV.y), 0.0, 0.999999) * ATLAS_SIZE);\n        vec3 col = vec3(atlasBytes(pixel, tcFlipY) / 255.0, 0.0);\n        if (screenUV.y < 0.035) col = vec3(0.05, 0.8, 0.25);\n        fragColor = vec4(col, 1.0);\n        return;\n    }\n    if (debugMode > 1.5) {\n        vec3 p = TC_MIN + (TC_MAX - TC_MIN) * vec3(screenUV, (floor(sliceZ)+0.5)/128.0);\n        float d = hoodieSDF(p);\n        vec3 col = d < 0.0 ? vec3(0.1,0.35,0.85) : vec3(0.88);\n        col = mix(vec3(1.0,0.5,0.0), col, smoothstep(0.0, TC_H * 0.5, abs(d)));\n        fragColor = vec4(col, 1.0);\n        return;\n    }\n\n    float angle = radians(viewAngle + autoRotate * iTime * rotationSpeed);\n    vec3 right = vec3(cos(angle), 0.0, -sin(angle));\n    vec3 up = vec3(0.0, 1.0, 0.0);\n    vec3 rd = vec3(-sin(angle), 0.0, -cos(angle));\n    float fit = max(1.0, min(iResolution.y, iResolution.x / 0.78));\n    vec2 q = (fragCoord - 0.5 * iResolution.xy) / fit * 2.30 / zoom;\n    vec3 ro = 0.5 * (TC_MIN + TC_MAX) + q.x * right + q.y * up - 3.0 * rd;\n    float t;\n    float status = traceHoodie(ro, rd, t);\n    vec3 col = vec3(0.90);\n    if (status > 0.5) {\n        vec3 n = hoodieNormal(ro + rd * t);\n        vec3 key = normalize(-0.4 * right + 0.6 * up - rd);\n        vec3 fill = normalize(0.7 * right + 0.1 * up + 0.7 * rd);\n        float light = 0.28 + 0.62 * max(dot(n, key), 0.0) + 0.10 * max(dot(n, fill), 0.0);\n        col = vec3(0.88) * light;\n    } else if (status < -0.5) {\n        col = vec3(1.0, 0.0, 1.0);\n    }\n    fragColor = vec4(col, 1.0);\n}\n\n\nvoid main() {\n    mainImage(gl_FragColor, gl_FragCoord.xy);\n}\n"
+      })
+    );
+    scene.add(quad);
+
+    const texturePath = "file:///D:/HYPER3D/hyper3D/hoodie/hoodie_sdf_128_atlas.png";
+    const textureLoader = new THREE.TextureLoader();
+
+    let textureLoaded = false;
+    let start = performance.now();
+    let measuredFrames = 0;
+    let totalFrameMs = 0;
+    let previousFrame = 0;
+
+    const emitStatus = () => {
+      const avgFrameMs = measuredFrames > 0 ? totalFrameMs / measuredFrames : null;
+      const payload = {
+        textureLoaded,
+        measuredFrames,
+        avgFrameMs,
+        approxFps: avgFrameMs ? 1000 / avgFrameMs : null,
+        webglContext: gl instanceof WebGL2RenderingContext ? "WebGL2" : "WebGL1",
+        glVersion: gl.getParameter(gl.VERSION),
+        glRenderer: gl.getParameter(gl.RENDERER),
+        glVendor: gl.getParameter(gl.VENDOR),
+        shadingLanguageVersion: gl.getParameter(gl.SHADING_LANGUAGE_VERSION),
+        errors
+      };
+      statusEl.textContent = JSON.stringify(payload, null, 2);
+    };
+
+    const onResize = () => {
+      renderer.setSize(window.innerWidth, window.innerHeight, false);
+      uniforms.iResolution.value.set(window.innerWidth, window.innerHeight, 1);
+    };
+    window.addEventListener("resize", onResize);
+
+    textureLoader.load(
+      texturePath,
+      (texture) => {
+        texture.magFilter = THREE.NearestFilter;
+        texture.minFilter = THREE.NearestFilter;
+        texture.wrapS = THREE.ClampToEdgeWrapping;
+        texture.wrapT = THREE.ClampToEdgeWrapping;
+        texture.generateMipmaps = false;
+        texture.needsUpdate = true;
+        uniforms.iChannel0.value = texture;
+        textureLoaded = true;
+        note("texture", "loaded");
+        requestAnimationFrame(render);
+      },
+      undefined,
+      (err) => {
+        errors.push("Texture load failed: " + (err && err.message ? err.message : err));
+        emitStatus();
+      }
+    );
+
+    function render(now) {
+      if (!textureLoaded) {
+        emitStatus();
+        return;
+      }
+      uniforms.iTime.value = (now - start) / 1000;
+      if (measuredFrames > 0) {
+        totalFrameMs += now - previousFrame;
+      }
+      previousFrame = now;
+      measuredFrames += 1;
+      renderer.render(scene, camera);
+      if (measuredFrames >= framesToMeasure) {
+        emitStatus();
+        return;
+      }
+      requestAnimationFrame(render);
+    }
+  </script>
+</body>
+</html>

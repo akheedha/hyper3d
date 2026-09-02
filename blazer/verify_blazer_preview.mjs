@@ -1,7 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
-const root = process.cwd();
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const root = __dirname;
 const shaderPath = path.join(root, "TC_Blazer_SDF.glsl");
 const htmlPath = path.join(root, "tc_blazer_preview.html");
 const threePath = path.join(
@@ -13,11 +15,9 @@ const threePath = path.join(
   "three.min.js"
 );
 
-if (!fs.existsSync(shaderPath)) {
-  throw new Error(`Missing shader: ${shaderPath}`);
-}
-if (!fs.existsSync(threePath)) {
-  throw new Error(`Missing three.js resource: ${threePath}`);
+let threeScriptSrc = "https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js";
+if (fs.existsSync(threePath)) {
+  threeScriptSrc = `file:///${threePath.replace(/\\/g, "/")}`;
 }
 
 const rawShader = fs.readFileSync(shaderPath, "utf8");
@@ -80,7 +80,7 @@ const html = `<!DOCTYPE html>
 </head>
 <body>
   <div id="status">initializing...</div>
-  <script src="${new URL(`file:///${threePath.replace(/\\\\/g, "/")}`)}"></script>
+  <script src="${threeScriptSrc}"></script>
   <script>
     const statusEl = document.getElementById("status");
     const errors = [];

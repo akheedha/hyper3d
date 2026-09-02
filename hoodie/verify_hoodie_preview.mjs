@@ -15,11 +15,9 @@ const threePath = path.join(
   "three.min.js"
 );
 
-if (!fs.existsSync(shaderPath)) {
-  throw new Error(`Missing shader: ${shaderPath}`);
-}
-if (!fs.existsSync(threePath)) {
-  throw new Error(`Missing three.js resource: ${threePath}`);
+let threeScriptSrc = "https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js";
+if (fs.existsSync(threePath)) {
+  threeScriptSrc = `file:///${threePath.replace(/\\/g, "/")}`;
 }
 
 const rawShader = fs.readFileSync(shaderPath, "utf8");
@@ -82,7 +80,7 @@ const html = `<!DOCTYPE html>
 </head>
 <body>
   <div id="status">initializing...</div>
-  <script src="${new URL(`file:///${threePath.replace(/\\/g, "/")}`)}"></script>
+  <script src="${threeScriptSrc}"></script>
   <script>
     const statusEl = document.getElementById("status");
     const errors = [];
