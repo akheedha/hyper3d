@@ -1,0 +1,45 @@
+{
+  "atlas_dimensions": [
+    2048,
+    1024
+  ],
+  "compared_voxels": 2097152,
+  "max_distance_roundtrip_error": 1.895201301715943e-05,
+  "orientation_checks": "pass: original and Y-flipped uploads",
+  "simulated_srgb_conversion": "correctly rejected",
+  "manual_trilinear_points": 2000,
+  "max_manual_vs_reference_interpolation_error": 2.220446049250313e-16,
+  "cpu_render_dimensions_per_view": [
+    240,
+    310
+  ],
+  "views": [
+    {
+      "angle_degrees": 0.0,
+      "hit_pixels": 34286,
+      "capped_rays": 0,
+      "loop_iterations": 260
+    },
+    {
+      "angle_degrees": 90.0,
+      "hit_pixels": 19166,
+      "capped_rays": 0,
+      "loop_iterations": 966
+    },
+    {
+      "angle_degrees": 180.0,
+      "hit_pixels": 34282,
+      "capped_rays": 0,
+      "loop_iterations": 260
+    },
+    {
+      "angle_degrees": 270.0,
+      "hit_pixels": 19167,
+      "capped_rays": 0,
+      "loop_iterations": 966
+    }
+  ],
+  "gpu_compilation_tested": false,
+  "vscode_extension_tested": false,
+  "limitations": "CPU numerical checks only; live GPU/extension verification remains required."
+}

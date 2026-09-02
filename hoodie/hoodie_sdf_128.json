@@ -1,0 +1,75 @@
+{
+  "schema": "timed-colors.sdf-volume",
+  "version": 1,
+  "source_file": "Hoodie.glb",
+  "resolution": [
+    128,
+    128,
+    128
+  ],
+  "bounding_box_min": [
+    -1.0217863898010253,
+    -0.07764338980102536,
+    -1.0229333798010254
+  ],
+  "bounding_box_max": [
+    1.0262673898010255,
+    1.9704103898010255,
+    1.0251203998010254
+  ],
+  "voxel_size": 0.016000420153141022,
+  "sample_location": "cell centers",
+  "coordinate_system": "Original repaired GLB local coordinates; +Y up, +Z front",
+  "distance_units": "original model units; no physical size calibration",
+  "sign": "negative inside; positive outside",
+  "array_shape_zyx": [
+    128,
+    128,
+    128
+  ],
+  "binary_file": "hoodie_sdf_128.f32",
+  "binary_type": "IEEE 754 float32 little-endian",
+  "binary_order": "x fastest, then y, then z; index=x+128*(y+128*z)",
+  "sample_position": "bbox_min + (vec3(x,y,z)+0.5)*voxel_size",
+  "source_triangle_count": 32558,
+  "probes": [
+    {
+      "x": 37,
+      "y": 61,
+      "r": 207,
+      "g": 255
+    },
+    {
+      "x": 1021,
+      "y": 387,
+      "r": 170,
+      "g": 230
+    },
+    {
+      "x": 1703,
+      "y": 911,
+      "r": 191,
+      "g": 155
+    }
+  ],
+  "atlas": {
+    "file": "hoodie_sdf_128_atlas.png",
+    "pixel_size": [
+      2048,
+      1024
+    ],
+    "slice_columns": 16,
+    "slice_rows": 8,
+    "tile_size": [
+      128,
+      128
+    ],
+    "slice_order": "z increases left-to-right, then top-to-bottom",
+    "within_tile": "image column=x; image row=y; top row=y=0",
+    "channels": "R=high byte, G=low byte, B=0, A=255",
+    "decode": "q=round(R*255)*256+round(G*255); distance=(q/65535*2-1)*1.23",
+    "distance_range": 1.23,
+    "maximum_roundtrip_error": 1.895201301715943e-05,
+    "texture_settings": "Linear data, no sRGB conversion; no Y flip; no mipmaps. GLSL texelFetch with manual trilinear interpolation."
+  }
+}
