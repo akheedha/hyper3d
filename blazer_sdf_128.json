@@ -1,0 +1,56 @@
+{
+  "schema": "timed-colors.sdf-volume",
+  "version": 1,
+  "source_file": "base_basic_pbr.glb",
+  "source_sha256": "3fdb32cfbbf659d6a9e8e722042dc0be983ccf605d8faa93819872148b914e1d",
+  "resolution": [
+    128,
+    128,
+    128
+  ],
+  "bounding_box_min": [
+    -1.0236469101905823,
+    -0.07585384368896486,
+    -1.0235668462514877
+  ],
+  "bounding_box_max": [
+    1.0244068694114685,
+    1.972199935913086,
+    1.024486933350563
+  ],
+  "voxel_size": 0.016000420153141022,
+  "sample_location": "cell centers",
+  "coordinate_system": "Original repaired GLB local coordinates; +Y up, +Z front",
+  "distance_units": "original model units; no physical size calibration",
+  "sign": "negative inside; positive outside",
+  "array_shape_zyx": [
+    128,
+    128,
+    128
+  ],
+  "binary_file": "blazer_sdf_128.f32",
+  "binary_type": "IEEE 754 float32 little-endian",
+  "binary_order": "x fastest, then y, then z; index=x+128*(y+128*z)",
+  "sample_position": "bbox_min + (vec3(x,y,z)+0.5)*voxel_size",
+  "source_triangle_count": 34878,
+  "atlas": {
+    "file": "blazer_sdf_128_atlas.png",
+    "pixel_size": [
+      2048,
+      1024
+    ],
+    "slice_columns": 16,
+    "slice_rows": 8,
+    "tile_size": [
+      128,
+      128
+    ],
+    "slice_order": "z increases left-to-right, then top-to-bottom",
+    "within_tile": "image column=x; image row=y; top row=y=0",
+    "channels": "R=high byte, G=low byte, B=0, A=255",
+    "decode": "q=round(R*255)*256+round(G*255); distance=(q/65535*2-1)*distance_range",
+    "distance_range": 1.159999966621399,
+    "maximum_roundtrip_error": 1.7868623932160155e-05,
+    "texture_settings": "Linear data, no sRGB conversion; no Y flip; no mipmaps. GLSL texelFetch with manual trilinear interpolation."
+  }
+}
